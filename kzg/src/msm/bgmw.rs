@@ -29,13 +29,13 @@ const NBITS: usize = 255;
 
 #[cfg(feature = "parallel")]
 #[derive(Debug, Clone, Copy)]
-enum BgmwWindow {
+pub enum BgmwWindow {
     Sync(usize),
     Parallel((usize, usize, usize)),
 }
 
 #[cfg(not(feature = "parallel"))]
-type BgmwWindow = usize;
+pub type BgmwWindow = usize;
 
 #[inline]
 const fn get_table_dimensions(window: BgmwWindow) -> (usize, usize) {
@@ -307,6 +307,171 @@ impl<
                 _ => pippenger_window_size(npoints), // default to pippenger window size. This is not optimal window size, but still better than simple pippenger
             }
         }
+    }
+
+    /////// File IO ///////
+
+    // File structure is like this:
+    // window:
+    // - usize: number of window usizes N
+    // - usize * N: window values
+    // numpoints: usize
+    // h: usize
+    // points:
+    // - 96 bytes * numpoints * h: points
+    pub fn read_from_file(path: &str) -> Result<Self, String> {
+        let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+        let mut reader = std::io::BufReader::new(file);
+        let window = Self::read_window(&mut reader)?;
+        let numpoints = Self::read_numpoints(&mut reader)?;
+        let h = Self::read_h(&mut reader)?;
+        let points = Self::read_points(&mut reader, numpoints, h)?;
+        Ok(Self {
+            window,
+            points,
+            numpoints,
+            h,
+            g1_marker: PhantomData,
+            g1_fp_marker: PhantomData,
+            fr_marker: PhantomData,
+        })
+    }
+
+    pub fn read_usize(reader: &mut std::io::BufReader<std::fs::File>) -> Result<usize, String> {
+        use std::io::Read;
+        let mut buffer = [0u8; 8];
+        reader.read_exact(&mut buffer).map_err(|e| e.to_string())?;
+        Ok(usize::from_le_bytes(buffer))
+    }
+
+    // window is just a usize
+    pub fn read_window(
+        reader: &mut std::io::BufReader<std::fs::File>,
+    ) -> Result<BgmwWindow, String> {
+        #[cfg(not(feature = "parallel"))]
+        {
+            match Self::read_usize(reader)? {
+                1 => Ok(BgmwWindow::from(Self::read_usize(reader)?)),
+                _ => Err("Invalid window type".to_string()),
+            }
+        }
+
+        #[cfg(feature = "parallel")]
+        {
+            match Self::read_usize(reader)? {
+                1 => Ok(BgmwWindow::Sync(Self::read_usize(reader)?)),
+                3 => Ok(BgmwWindow::Parallel((
+                    Self::read_usize(reader)?,
+                    Self::read_usize(reader)?,
+                    Self::read_usize(reader)?,
+                ))),
+                _ => Err("Invalid window type".to_string()),
+            }
+        }
+    }
+
+    pub fn read_numpoints(reader: &mut std::io::BufReader<std::fs::File>) -> Result<usize, String> {
+        Self::read_usize(reader)
+    }
+
+    pub fn read_h(reader: &mut std::io::BufReader<std::fs::File>) -> Result<usize, String> {
+        Self::read_usize(reader)
+    }
+
+    pub fn read_points(
+        reader: &mut std::io::BufReader<std::fs::File>,
+        numpoints: usize,
+        h: usize,
+    ) -> Result<Vec<TG1Affine>, String> {
+        use std::io::Read;
+        let mut points = Vec::new();
+        points
+            .try_reserve_exact(numpoints * h)
+            .map_err(|_| "BGMW precomputation table is too large".to_string())?;
+        unsafe { points.set_len(numpoints * h) };
+
+        for affine in points.iter_mut().take(numpoints * h) {
+            let mut buffer = [0u8; 48];
+            reader.read_exact(&mut buffer).map_err(|e| e.to_string())?;
+            let point = TG1::from_bytes(&buffer).map_err(|e| e.to_string())?;
+            *affine = TG1Affine::into_affine(&point);
+        }
+
+        Ok(points)
+    }
+
+    pub fn write_to_file(&self, path: &str) -> Result<(), String> {
+        let file = std::fs::File::create(path).map_err(|e| e.to_string())?;
+        let mut writer = std::io::BufWriter::new(file);
+        self.write_window(&mut writer)?;
+        self.write_numpoints(&mut writer)?;
+        self.write_h(&mut writer)?;
+        self.write_points(&mut writer)?;
+        Ok(())
+    }
+
+    pub fn write_usize(
+        writer: &mut std::io::BufWriter<std::fs::File>,
+        value: usize,
+    ) -> Result<(), String> {
+        use std::io::Write;
+        writer
+            .write_all(&value.to_le_bytes())
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn write_window(
+        &self,
+        writer: &mut std::io::BufWriter<std::fs::File>,
+    ) -> Result<(), String> {
+        #[cfg(not(feature = "parallel"))]
+        {
+            Self::write_usize(writer, 1)?;
+            Self::write_usize(writer, self.window)?;
+        }
+
+        #[cfg(feature = "parallel")]
+        {
+            match self.window {
+                BgmwWindow::Sync(wnd) => {
+                    Self::write_usize(writer, 1)?;
+                    Self::write_usize(writer, wnd)?;
+                }
+                BgmwWindow::Parallel((nx, ny, wnd)) => {
+                    Self::write_usize(writer, 3)?;
+                    Self::write_usize(writer, nx)?;
+                    Self::write_usize(writer, ny)?;
+                    Self::write_usize(writer, wnd)?;
+                }
+            };
+        }
+
+        Ok(())
+    }
+
+    pub fn write_numpoints(
+        &self,
+        writer: &mut std::io::BufWriter<std::fs::File>,
+    ) -> Result<(), String> {
+        Self::write_usize(writer, self.numpoints)
+    }
+
+    pub fn write_h(&self, writer: &mut std::io::BufWriter<std::fs::File>) -> Result<(), String> {
+        Self::write_usize(writer, self.h)
+    }
+
+    pub fn write_points(
+        &self,
+        writer: &mut std::io::BufWriter<std::fs::File>,
+    ) -> Result<(), String> {
+        use std::io::Write;
+        for affine in self.points.iter() {
+            let point = affine.to_proj();
+            writer
+                .write_all(&point.to_bytes())
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
     }
 }
 
