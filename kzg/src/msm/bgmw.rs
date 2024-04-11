@@ -383,6 +383,8 @@ impl<
         numpoints: usize,
         h: usize,
     ) -> Result<Vec<TG1Affine>, String> {
+        #[cfg(feature = "parallel")]
+        use rayon::prelude::*;
         use std::io::Read;
         let mut points = Vec::new();
         points
@@ -390,11 +392,30 @@ impl<
             .map_err(|_| "BGMW precomputation table is too large".to_string())?;
         unsafe { points.set_len(numpoints * h) };
 
-        for affine in points.iter_mut().take(numpoints * h) {
-            let mut buffer = [0u8; 48];
+        #[cfg(not(feature = "parallel"))]
+        {
+            for affine in points.iter_mut().take(numpoints * h) {
+                let mut buffer = [0u8; 48];
+                reader.read_exact(&mut buffer).map_err(|e| e.to_string())?;
+                let point = TG1::from_bytes(&buffer).map_err(|e| e.to_string())?;
+                *affine = TG1Affine::into_affine(&point);
+            }
+        }
+
+        #[cfg(feature = "parallel")]
+        {
+            let mut buffer = vec![0u8; 48 * numpoints * h];
             reader.read_exact(&mut buffer).map_err(|e| e.to_string())?;
-            let point = TG1::from_bytes(&buffer).map_err(|e| e.to_string())?;
-            *affine = TG1Affine::into_affine(&point);
+            let affines = buffer
+                .par_chunks_exact(48)
+                .map(|chunk| {
+                    let point = TG1::from_bytes(chunk).map_err(|e| e.to_string())?;
+                    Ok(TG1Affine::into_affine(&point))
+                })
+                .collect::<Result<Vec<TG1Affine>, String>>()?;
+            for (i, point) in affines.into_iter().enumerate() {
+                points[i] = point;
+            }
         }
 
         Ok(points)
