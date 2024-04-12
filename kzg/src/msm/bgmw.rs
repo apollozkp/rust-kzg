@@ -1,5 +1,7 @@
 use core::marker::PhantomData;
 
+use alloc::sync::Arc;
+
 use crate::{Fr, G1Affine, G1Fp, G1GetFp, G1Mul, Scalar256, G1};
 
 use super::pippenger_utils::{
@@ -171,7 +173,7 @@ impl<
             thread_pool::{da_pool, ThreadPoolExt},
         };
         use core::sync::atomic::{AtomicUsize, Ordering};
-        use std::sync::{mpsc, Arc};
+        use std::sync::mpsc;
 
         let npoints = scalars.len();
         let pool = da_pool();
@@ -308,7 +310,15 @@ impl<
             }
         }
     }
+}
 
+impl<
+        TFr: Fr,
+        TG1Fp: G1Fp,
+        TG1: G1 + G1Mul<TFr> + G1GetFp<TG1Fp>,
+        TG1Affine: G1Affine<TG1, TG1Fp> + 'static,
+    > BgmwTable<TFr, TG1, TG1Fp, TG1Affine>
+{
     /////// File IO ///////
 
     // File structure is like this:
@@ -383,39 +393,25 @@ impl<
         numpoints: usize,
         h: usize,
     ) -> Result<Vec<TG1Affine>, String> {
-        #[cfg(feature = "parallel")]
-        use rayon::prelude::*;
-        use std::io::Read;
         let mut points = Vec::new();
         points
             .try_reserve_exact(numpoints * h)
             .map_err(|_| "BGMW precomputation table is too large".to_string())?;
         unsafe { points.set_len(numpoints * h) };
 
-        #[cfg(not(feature = "parallel"))]
-        {
-            for affine in points.iter_mut().take(numpoints * h) {
-                let mut buffer = [0u8; 48];
-                reader.read_exact(&mut buffer).map_err(|e| e.to_string())?;
-                let point = TG1::from_bytes(&buffer).map_err(|e| e.to_string())?;
-                *affine = TG1Affine::into_affine(&point);
-            }
-        }
+        let handler = |bytes: &[u8; 48]| -> Result<TG1Affine, String> {
+            Ok(TG1Affine::into_affine(&TG1::from_bytes(bytes)?))
+        };
 
-        #[cfg(feature = "parallel")]
-        {
-            let mut buffer = vec![0u8; 48 * numpoints * h];
-            reader.read_exact(&mut buffer).map_err(|e| e.to_string())?;
-            let affines = buffer
-                .par_chunks_exact(48)
-                .map(|chunk| {
-                    let point = TG1::from_bytes(chunk).map_err(|e| e.to_string())?;
-                    Ok(TG1Affine::into_affine(&point))
-                })
-                .collect::<Result<Vec<TG1Affine>, String>>()?;
-            for (i, point) in affines.into_iter().enumerate() {
-                points[i] = point;
-            }
+        let affines = crate::io_utils::batch_reader::<48, Result<TG1Affine, String>>(
+            &mut *reader,
+            numpoints * h,
+            Arc::new(handler),
+            None,
+        )?;
+
+        for (i, affine) in affines.into_iter().enumerate() {
+            points[i] = affine?;
         }
 
         Ok(points)

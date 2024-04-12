@@ -10,6 +10,7 @@ use msm::precompute::PrecomputationTable;
 pub mod common_utils;
 pub mod eip_4844;
 pub mod msm;
+pub mod io_utils;
 
 pub trait Fr: Default + Clone + PartialEq + Sync {
     fn null() -> Self;

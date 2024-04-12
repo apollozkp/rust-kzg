@@ -12,57 +12,6 @@ use crate::consts::{G1_GENERATOR, G2_GENERATOR};
 use crate::types::g1::FsG1;
 use crate::types::g2::FsG2;
 
-type Handler<T, const N: usize> = Arc<dyn Fn(&[u8; N]) -> T + Send + Sync>;
-
-pub fn batch_reader<const N: usize, T>(
-    reader: &mut dyn Read,
-    n: usize,
-    handler: Handler<T, N>,
-) -> Result<Vec<T>, String>
-where
-    T: Clone + Send + Sync + 'static,
-{
-    #[cfg(not(feature = "parallel"))]
-    {
-        (0..n as usize).try_fold(Vec::with_capacity(n), |mut acc, _| {
-            let mut bytes = [0u8; N];
-            reader.read_exact(&mut bytes).map_err(|e| e.to_string())?;
-            acc.push(handler(&bytes));
-            Ok(acc)
-        })
-    }
-    #[cfg(feature = "parallel")]
-    {
-        let (bytes_tx, bytes_rx) = crossbeam_channel::bounded(1000);
-        let (parsed_tx, parsed_rx) = std::sync::mpsc::channel();
-        let n_cores = num_cpus::get();
-        for _ in 0..n_cores - 1 {
-            let bytes_rx = bytes_rx.clone();
-            let parsed_tx = parsed_tx.clone();
-            let handler = handler.clone();
-            std::thread::spawn(move || {
-                while let Ok((i, bytes)) = bytes_rx.recv() {
-                    let parsed = handler(&bytes);
-                    parsed_tx.send((i, parsed)).unwrap();
-                }
-            });
-        }
-
-        for i in 0..n {
-            let mut bytes = [0u8; N];
-            reader.read_exact(&mut bytes).map_err(|e| e.to_string())?;
-            bytes_tx.send((i, bytes)).unwrap();
-        }
-
-        let mut output = unsafe { vec![std::mem::zeroed(); n] };
-        for _ in 0..n {
-            let (i, parsed) = parsed_rx.recv().unwrap();
-            output[i] = parsed;
-        }
-        Ok(output)
-    }
-}
-
 pub fn generate_trusted_setup(n: usize, secret: [u8; 32usize]) -> (Vec<FsG1>, Vec<FsG2>) {
     let s = hash_to_bls_field(&secret);
     let mut s_pow = Fr::one();
@@ -81,42 +30,36 @@ pub fn generate_trusted_setup(n: usize, secret: [u8; 32usize]) -> (Vec<FsG1>, Ve
 }
 
 pub fn load_secrets_from_file(path: &str) -> Result<(Vec<FsG1>, Vec<FsG2>), String> {
-    fn g1_handler(bytes: &[u8; 48]) -> Result<FsG1, String> {
-        FsG1::from_bytes(bytes)
-    }
-    fn g2_handler(bytes: &[u8; 96]) -> Result<FsG2, String> {
-        FsG2::from_bytes(bytes)
-    }
     let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let mut reader = std::io::BufReader::new(file);
 
+    // Read g1
+    fn g1_handler(bytes: &[u8; 48]) -> FsG1 {
+        FsG1::from_bytes(bytes).expect("Failed to parse G1 element")
+    }
     let mut g1_size_bytes = [0u8; 8];
     reader
         .read_exact(&mut g1_size_bytes)
         .map_err(|e| e.to_string())?;
     let g1_size = u64::from_le_bytes(g1_size_bytes);
 
-    let g1 = batch_reader::<48, Result<FsG1, String>>(
-        &mut reader,
-        g1_size as usize,
-        Arc::new(g1_handler),
-    )?
-    .into_iter()
-    .collect::<Result<Vec<_>, _>>()?;
+    let g1 = kzg::io_utils::batch_reader::<48, FsG1>(&mut reader, g1_size as usize, Arc::new(g1_handler), None)?
+        .into_iter()
+        .collect::<Vec<FsG1>>();
 
+    // Read g2
+    fn g2_handler(bytes: &[u8; 96]) -> FsG2 {
+        FsG2::from_bytes(bytes).expect("Failed to parse G2 element")
+    }
     let mut g2_size_bytes = [0u8; 8];
     reader
         .read_exact(&mut g2_size_bytes)
         .map_err(|e| e.to_string())?;
     let g2_size = u64::from_le_bytes(g2_size_bytes);
 
-    let g2 = batch_reader::<96, Result<FsG2, String>>(
-        &mut reader,
-        g2_size as usize,
-        Arc::new(g2_handler),
-    )?
-    .into_iter()
-    .collect::<Result<Vec<_>, _>>()?;
+    let g2 = kzg::io_utils::batch_reader::<96, FsG2>(&mut reader, g2_size as usize, Arc::new(g2_handler), None)?
+        .into_iter()
+        .collect::<Vec<FsG2>>();
 
     Ok((g1, g2))
 }

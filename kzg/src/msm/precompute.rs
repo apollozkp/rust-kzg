@@ -76,7 +76,7 @@ where
     TFr: Fr,
     TG1: G1 + G1Mul<TFr> + G1GetFp<TG1Fp>,
     TG1Fp: G1Fp,
-    TG1Affine: G1Affine<TG1, TG1Fp>,
+    TG1Affine: G1Affine<TG1, TG1Fp> + 'static,
 {
     Ok(Some(PrecomputationTable::<TFr, TG1, TG1Fp, TG1Affine>::read_from_file(filename)?))
 }
@@ -89,7 +89,7 @@ where
     TFr: Fr,
     TG1: G1 + G1Mul<TFr> + G1GetFp<TG1Fp>,
     TG1Fp: G1Fp,
-    TG1Affine: G1Affine<TG1, TG1Fp>,
+    TG1Affine: G1Affine<TG1, TG1Fp> + 'static,
 {
     table.write_to_file(filename)
 }

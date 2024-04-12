@@ -10,6 +10,7 @@ num_cpus = { version = "1.16.0", optional = true }
 rayon = { version = "1.10.0", optional = true } 
 threadpool = { version = "^1.8.1", optional = true }
 siphasher = { version = "1.0.0", default-features = false }
+crossbeam-channel = { version = "0.5.0", optional = true }
 
 [features]
 default = [
@@ -20,7 +21,8 @@ parallel = [
     "std",
     "dep:rayon",
     "dep:num_cpus",
-    "dep:threadpool"
+    "dep:threadpool",
+    "dep:crossbeam-channel",
 ]
 std = [
     "sha2/std",
