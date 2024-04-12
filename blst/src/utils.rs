@@ -29,7 +29,7 @@ pub fn generate_trusted_setup(n: usize, secret: [u8; 32usize]) -> (Vec<FsG1>, Ve
     (s1, s2)
 }
 
-pub fn load_secrets_from_file(path: &str) -> Result<(Vec<FsG1>, Vec<FsG2>), String> {
+pub fn load_setup_from_file(path: &str) -> Result<(Vec<FsG1>, Vec<FsG2>), String> {
     let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let mut reader = std::io::BufReader::new(file);
 
@@ -43,9 +43,14 @@ pub fn load_secrets_from_file(path: &str) -> Result<(Vec<FsG1>, Vec<FsG2>), Stri
         .map_err(|e| e.to_string())?;
     let g1_size = u64::from_le_bytes(g1_size_bytes);
 
-    let g1 = kzg::io_utils::batch_reader::<48, FsG1>(&mut reader, g1_size as usize, Arc::new(g1_handler), None)?
-        .into_iter()
-        .collect::<Vec<FsG1>>();
+    let g1 = kzg::io_utils::batch_reader::<48, FsG1>(
+        &mut reader,
+        g1_size as usize,
+        Arc::new(g1_handler),
+        None,
+    )?
+    .into_iter()
+    .collect::<Vec<FsG1>>();
 
     // Read g2
     fn g2_handler(bytes: &[u8; 96]) -> FsG2 {
@@ -57,14 +62,19 @@ pub fn load_secrets_from_file(path: &str) -> Result<(Vec<FsG1>, Vec<FsG2>), Stri
         .map_err(|e| e.to_string())?;
     let g2_size = u64::from_le_bytes(g2_size_bytes);
 
-    let g2 = kzg::io_utils::batch_reader::<96, FsG2>(&mut reader, g2_size as usize, Arc::new(g2_handler), None)?
-        .into_iter()
-        .collect::<Vec<FsG2>>();
+    let g2 = kzg::io_utils::batch_reader::<96, FsG2>(
+        &mut reader,
+        g2_size as usize,
+        Arc::new(g2_handler),
+        None,
+    )?
+    .into_iter()
+    .collect::<Vec<FsG2>>();
 
     Ok((g1, g2))
 }
 
-pub fn save_secrets_to_file(
+pub fn save_setup_to_file(
     file_path: &str,
     secret_g1: &[FsG1],
     secret_g2: &[FsG2],
