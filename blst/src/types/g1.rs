@@ -7,6 +7,8 @@ use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec::Vec;
 
+use blst::blst_p1_deserialize;
+use blst::blst_p1_serialize;
 use blst::p1_affines;
 use blst::{
     blst_fp, blst_p1, blst_p1_add, blst_p1_add_or_double, blst_p1_affine, blst_p1_cneg,
@@ -185,6 +187,24 @@ impl G1 for FsG1 {
         unsafe {
             blst::blst_p1_double(&mut self.0, &self.0);
         }
+    }
+
+    fn serialize(&self) -> [u8; 96] {
+        let mut out = [0u8; 96];
+        unsafe {
+            blst_p1_serialize(out.as_mut_ptr(), &self.0);
+        }
+        out
+    }
+
+    fn deserialize(bytes: &[u8]) -> Result<Self, String> {
+        let mut tmp = blst_p1_affine::default();
+        let mut g1 = blst_p1::default();
+        unsafe {
+            blst_p1_deserialize(&mut tmp, bytes.as_ptr());
+            blst_p1_from_affine(&mut g1, &tmp);
+        }
+        Ok(FsG1(g1))
     }
 }
 

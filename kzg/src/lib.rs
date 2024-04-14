@@ -110,6 +110,9 @@ pub trait G1: Clone + Default + PartialEq + Sync + Debug + Send {
     fn add_or_dbl_assign(&mut self, b: &Self);
     fn add_assign(&mut self, b: &Self);
     fn dbl_assign(&mut self);
+
+    fn deserialize(bytes: &[u8]) -> Result<Self, String>;
+    fn serialize(&self) -> [u8; 96];
 }
 
 pub trait G1GetFp<TFp: G1Fp>: G1 + Clone {
@@ -362,6 +365,9 @@ pub trait G2: Clone + Default {
     fn sub(&self, b: &Self) -> Self;
 
     fn equals(&self, b: &Self) -> bool;
+
+    fn serialize(&self) -> [u8; 192];
+    fn deserialize(bytes: &[u8]) -> Result<Self, String>;
 }
 
 pub trait G2Mul<Fr>: Clone {

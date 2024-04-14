@@ -321,21 +321,13 @@ impl<
 {
     /////// File IO ///////
 
-    // File structure is like this:
-    // window:
-    // - usize: number of window usizes N
-    // - usize * N: window values
-    // numpoints: usize
-    // h: usize
-    // points:
-    // - 96 bytes * numpoints * h: points
-    pub fn read_from_file(path: &str) -> Result<Self, String> {
+    pub fn read_from_file(path: &str, compressed: bool) -> Result<Self, String> {
         let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
         let mut reader = std::io::BufReader::new(file);
         let window = Self::read_window(&mut reader)?;
         let numpoints = Self::read_numpoints(&mut reader)?;
         let h = Self::read_h(&mut reader)?;
-        let points = Self::read_points(&mut reader, numpoints, h)?;
+        let points = Self::read_points(&mut reader, numpoints, h, compressed)?;
         Ok(Self {
             window,
             points,
@@ -392,6 +384,7 @@ impl<
         reader: &mut std::io::BufReader<std::fs::File>,
         numpoints: usize,
         h: usize,
+        compressed: bool,
     ) -> Result<Vec<TG1Affine>, String> {
         let mut points = Vec::new();
         points
@@ -399,16 +392,33 @@ impl<
             .map_err(|_| "BGMW precomputation table is too large".to_string())?;
         unsafe { points.set_len(numpoints * h) };
 
-        let handler = |bytes: &[u8; 48]| -> Result<TG1Affine, String> {
-            Ok(TG1Affine::into_affine(&TG1::from_bytes(bytes)?))
-        };
+        let affines = if compressed {
+            const BYTES: usize = 48;
+            let handler = |bytes: &[u8; BYTES]| -> Result<TG1Affine, String> {
+                Ok(TG1Affine::into_affine(&TG1::from_bytes(bytes)?))
+            };
 
-        let affines = crate::io_utils::batch_reader::<48, Result<TG1Affine, String>>(
-            &mut *reader,
-            numpoints * h,
-            Arc::new(handler),
-            None,
-        )?;
+            
+            crate::io_utils::batch_reader::<BYTES, Result<TG1Affine, String>>(
+                &mut *reader,
+                numpoints * h,
+                Arc::new(handler),
+                None,
+            )?
+        } else {
+            const BYTES: usize = 96;
+            let handler = |bytes: &[u8; BYTES]| -> Result<TG1Affine, String> {
+                Ok(TG1Affine::into_affine(&TG1::deserialize(bytes)?))
+            };
+
+            
+            crate::io_utils::batch_reader::<BYTES, Result<TG1Affine, String>>(
+                &mut *reader,
+                numpoints * h,
+                Arc::new(handler),
+                None,
+            )?
+        };
 
         for (i, affine) in affines.into_iter().enumerate() {
             points[i] = affine?;
@@ -417,13 +427,13 @@ impl<
         Ok(points)
     }
 
-    pub fn write_to_file(&self, path: &str) -> Result<(), String> {
+    pub fn write_to_file(&self, path: &str, compressed: bool) -> Result<(), String> {
         let file = std::fs::File::create(path).map_err(|e| e.to_string())?;
         let mut writer = std::io::BufWriter::new(file);
         self.write_window(&mut writer)?;
         self.write_numpoints(&mut writer)?;
         self.write_h(&mut writer)?;
-        self.write_points(&mut writer)?;
+        self.write_points(&mut writer, compressed)?;
         Ok(())
     }
 
@@ -480,13 +490,20 @@ impl<
     pub fn write_points(
         &self,
         writer: &mut std::io::BufWriter<std::fs::File>,
+        compressed: bool,
     ) -> Result<(), String> {
         use std::io::Write;
         for affine in self.points.iter() {
             let point = affine.to_proj();
-            writer
-                .write_all(&point.to_bytes())
-                .map_err(|e| e.to_string())?;
+            if compressed {
+                writer
+                    .write_all(&point.to_bytes())
+                    .map_err(|e| e.to_string())?;
+            } else {
+                writer
+                    .write_all(&point.serialize())
+                    .map_err(|e| e.to_string())?;
+            }
         }
         Ok(())
     }

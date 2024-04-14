@@ -187,6 +187,14 @@ impl G2 for CtG2 {
     fn equals(&self, b: &Self) -> bool {
         unsafe { constantine::ctt_bls12_381_g2_jac_is_eq(&self.0, &b.0) != 0 }
     }
+
+    fn deserialize(bytes: &[u8]) -> Result<Self, String> {
+        todo!()
+    }
+
+    fn serialize(&self) -> [u8; 192] {
+        todo!()
+    }
 }
 
 impl CtG2 {

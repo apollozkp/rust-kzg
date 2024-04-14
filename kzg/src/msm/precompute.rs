@@ -71,6 +71,7 @@ where
 
 pub fn precompute_from_file<TFr, TG1, TG1Fp, TG1Affine>(
     filename: &str,
+    compressed: bool,
 ) -> Result<Option<PrecomputationTable<TFr, TG1, TG1Fp, TG1Affine>>, String>
 where
     TFr: Fr,
@@ -78,12 +79,13 @@ where
     TG1Fp: G1Fp,
     TG1Affine: G1Affine<TG1, TG1Fp> + 'static,
 {
-    Ok(Some(PrecomputationTable::<TFr, TG1, TG1Fp, TG1Affine>::read_from_file(filename)?))
+    Ok(Some(PrecomputationTable::<TFr, TG1, TG1Fp, TG1Affine>::read_from_file(filename, compressed)?))
 }
 
 pub fn precompute_to_file<TFr, TG1, TG1Fp, TG1Affine>(
     table: &PrecomputationTable<TFr, TG1, TG1Fp, TG1Affine>,
     filename: &str,
+    compressed: bool,
 ) -> Result<(), String>
 where
     TFr: Fr,
@@ -91,5 +93,5 @@ where
     TG1Fp: G1Fp,
     TG1Affine: G1Affine<TG1, TG1Fp> + 'static,
 {
-    table.write_to_file(filename)
+    table.write_to_file(filename, compressed)
 }

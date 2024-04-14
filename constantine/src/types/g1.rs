@@ -239,6 +239,14 @@ impl G1 for CtG1 {
             constantine::ctt_bls12_381_g1_jac_double_in_place(&mut self.0);
         }
     }
+
+    fn serialize(&self) -> [u8; 96] {
+        todo!()
+    }
+
+    fn deserialize(bytes: &[u8]) -> Result<Self, String> {
+        todo!()
+    }
 }
 
 impl G1Mul<CtFr> for CtG1 {

@@ -383,6 +383,14 @@ impl G1 for ArkG1 {
     fn dbl_assign(&mut self) {
         self.0.double_in_place();
     }
+
+    fn serialize(&self) -> [u8; 96] {
+        todo!()
+    }
+
+    fn deserialize(bytes: &[u8]) -> Result<Self, String> {
+        todo!()
+    }
 }
 
 impl G1Mul<ArkFr> for ArkG1 {
@@ -473,6 +481,14 @@ impl G2 for ArkG2 {
 
     fn equals(&self, b: &Self) -> bool {
         self.0.eq(&b.0)
+    }
+
+    fn serialize(&self) -> [u8; 192] {
+        todo!()
+    }
+
+    fn deserialize(bytes: &[u8]) -> Result<Self, String> {
+        todo!()
     }
 }
 

@@ -4,6 +4,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::string::ToString;
 
+use blst::{blst_p2_serialize, blst_p2_deserialize};
 use blst::{
     blst_fp2, blst_p2, blst_p2_add_or_double, blst_p2_affine, blst_p2_cneg, blst_p2_compress,
     blst_p2_double, blst_p2_from_affine, blst_p2_is_equal, blst_p2_mult, blst_p2_uncompress,
@@ -107,6 +108,27 @@ impl G2 for FsG2 {
     fn equals(&self, b: &Self) -> bool {
         unsafe { blst_p2_is_equal(&self.0, &b.0) }
     }
+
+    fn serialize(&self) -> [u8; 192] {
+        let mut out = [0u8; 192];
+        unsafe {
+            blst_p2_serialize(out.as_mut_ptr(), &self.0);
+        }
+        out
+    }
+
+    fn deserialize(bytes: &[u8]) -> Result<Self, String> {
+        let mut tmp = blst_p2_affine::default();
+        let mut g2 = blst_p2::default();
+        unsafe {
+            if blst_p2_deserialize(&mut tmp, bytes.as_ptr()) != BLST_ERROR::BLST_SUCCESS {
+                return Err("Failed to deserialize".to_string());
+            }
+            blst_p2_from_affine(&mut g2, &tmp);
+        }
+        Ok(FsG2(g2))
+
+    }
 }
 
 impl FsG2 {
@@ -118,5 +140,45 @@ impl FsG2 {
     pub fn rand() -> Self {
         let result: FsG2 = G2_GENERATOR;
         result.mul(&FsFr::rand())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    const N_POINTS: usize = 100000;
+
+    fn random_points() -> Vec<FsG2> {
+        (0..N_POINTS).map(|_| FsG2::rand()).collect::<Vec<_>>()
+    }
+
+    #[test]
+    fn test_serialize_deserialize() {
+        let random_points = random_points();
+        let now = std::time::Instant::now();
+        let mut sum = 0_u8;
+        for point in random_points {
+            let bytes = point.serialize();
+            sum = sum.overflowing_add(bytes.iter().sum::<u8>()).0;
+            let point_deserialized = FsG2::deserialize(&bytes).unwrap();
+            assert_eq!(point, point_deserialized);
+        }
+        println!("Time: {:?} ms", now.elapsed().as_millis());
+        println!("Per point: {:?} mus", now.elapsed().as_micros() / N_POINTS as u128);
+    }
+
+    #[test]
+    fn test_from_to_bytes() {
+        let random_points = random_points();
+        let now = std::time::Instant::now();
+        let mut sum = 0_u8;
+        for point in random_points {
+            let bytes = point.to_bytes();
+            sum = sum.overflowing_add(bytes.iter().sum::<u8>()).0;
+            let point_deserialized = FsG2::from_bytes(&bytes).unwrap();
+            assert_eq!(point, point_deserialized);
+        }
+        println!("Time: {:?} ms", now.elapsed().as_millis());
+        println!("Per point: {:?} mus", now.elapsed().as_micros() / N_POINTS as u128);
     }
 }
