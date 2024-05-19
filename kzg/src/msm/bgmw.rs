@@ -27,21 +27,6 @@ where
     fr_marker: PhantomData<TFr>,
 }
 
-impl <TFr, TG1, TG1Fp, TG1Affine>PartialEq for BgmwTable<TFr, TG1, TG1Fp, TG1Affine>
-where
-    TFr: Fr,
-    TG1: G1 + G1Mul<TFr> + G1GetFp<TG1Fp>,
-    TG1Fp: G1Fp,
-    TG1Affine: G1Affine<TG1, TG1Fp>,
-{
-    fn eq(&self, other: &Self) -> bool {
-        self.window == other.window
-            && self.points == other.points
-            && self.numpoints == other.numpoints
-            && self.h == other.h
-    }
-}
-
 const NBITS: usize = 255;
 
 #[cfg(feature = "parallel")]
@@ -53,20 +38,6 @@ pub enum BgmwWindow {
 
 #[cfg(not(feature = "parallel"))]
 pub type BgmwWindow = usize;
-
-impl PartialEq for BgmwWindow {
-    fn eq(&self, other: &Self) -> bool {
-        #[cfg(feature = "parallel")]
-        match (self, other) {
-            (BgmwWindow::Sync(a), BgmwWindow::Sync(b)) => a == b,
-            _ => false,
-        }
-        #[cfg(not(feature = "parallel"))]
-        {
-            self == other
-        }
-    }
-}
 
 #[inline]
 const fn get_table_dimensions(window: BgmwWindow) -> (usize, usize) {
