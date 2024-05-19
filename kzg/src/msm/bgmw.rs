@@ -324,10 +324,14 @@ impl<
     pub fn read_from_file(path: &str, compressed: bool) -> Result<Self, String> {
         let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
         let mut reader = std::io::BufReader::new(file);
-        let window = Self::read_window(&mut reader)?;
-        let numpoints = Self::read_numpoints(&mut reader)?;
-        let h = Self::read_h(&mut reader)?;
-        let points = Self::read_points(&mut reader, numpoints, h, compressed)?;
+        Self::read_from_buffer(&mut reader, compressed)
+    }
+
+    pub fn read_from_buffer(reader: &mut std::io::BufReader<std::fs::File>, compressed: bool) -> Result<Self, String> {
+        let window = Self::read_window(reader)?;
+        let numpoints = Self::read_numpoints(reader)?;
+        let h = Self::read_h(reader)?;
+        let points = Self::read_points(reader, numpoints, h, compressed)?;
         Ok(Self {
             window,
             points,
@@ -429,6 +433,20 @@ impl<
 
     pub fn write_to_file(&self, path: &str, compressed: bool) -> Result<(), String> {
         let file = std::fs::File::create(path).map_err(|e| e.to_string())?;
+        let mut writer = std::io::BufWriter::new(file);
+        self.write_window(&mut writer)?;
+        self.write_numpoints(&mut writer)?;
+        self.write_h(&mut writer)?;
+        self.write_points(&mut writer, compressed)?;
+        Ok(())
+    }
+
+    pub fn append_to_file(&self, path: &str, compressed: bool) -> Result<(), String> {
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .append(true)
+            .open(path)
+            .map_err(|e| e.to_string())?;
         let mut writer = std::io::BufWriter::new(file);
         self.write_window(&mut writer)?;
         self.write_numpoints(&mut writer)?;
