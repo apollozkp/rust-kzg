@@ -324,10 +324,10 @@ impl<
     pub fn read_from_file(path: &str, compressed: bool) -> Result<Self, String> {
         let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
         let mut reader = std::io::BufReader::new(file);
-        Self::read_from_buffer(&mut reader, compressed)
+        Self::read_from_reader(&mut reader, compressed)
     }
 
-    pub fn read_from_buffer(reader: &mut std::io::BufReader<std::fs::File>, compressed: bool) -> Result<Self, String> {
+    pub fn read_from_reader(reader: &mut std::io::BufReader<std::fs::File>, compressed: bool) -> Result<Self, String> {
         let window = Self::read_window(reader)?;
         let numpoints = Self::read_numpoints(reader)?;
         let h = Self::read_h(reader)?;
@@ -434,25 +434,15 @@ impl<
     pub fn write_to_file(&self, path: &str, compressed: bool) -> Result<(), String> {
         let file = std::fs::File::create(path).map_err(|e| e.to_string())?;
         let mut writer = std::io::BufWriter::new(file);
-        self.write_window(&mut writer)?;
-        self.write_numpoints(&mut writer)?;
-        self.write_h(&mut writer)?;
-        self.write_points(&mut writer, compressed)?;
+        self.write_to_writer(&mut writer, compressed)?;
         Ok(())
     }
 
-    pub fn append_to_file(&self, path: &str, compressed: bool) -> Result<(), String> {
-        let file = std::fs::OpenOptions::new()
-            .write(true)
-            .append(true)
-            .open(path)
-            .map_err(|e| e.to_string())?;
-        let mut writer = std::io::BufWriter::new(file);
-        self.write_window(&mut writer)?;
-        self.write_numpoints(&mut writer)?;
-        self.write_h(&mut writer)?;
-        self.write_points(&mut writer, compressed)?;
-        Ok(())
+    pub fn write_to_writer(&self, writer: &mut std::io::BufWriter<std::fs::File>, compressed: bool) -> Result<(), String> {
+        self.write_window(writer)?;
+        self.write_numpoints(writer)?;
+        self.write_h(writer)?;
+        self.write_points(writer, compressed)
     }
 
     pub fn write_usize(
